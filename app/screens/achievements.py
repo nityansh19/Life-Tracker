@@ -1,27 +1,16 @@
 import flet as ft
 
+from app.services.achievement_service import AchievementService
 from app.services.database import Database
-from app.services.streak_service import StreakService
 from app.utils.constants import APP_BG, BORDER, CARD_BG, STREAK, TEXT_MUTED, TEXT_PRIMARY
 
 
-ACHIEVEMENTS = [
-    ("First Flame", "Complete your first perfect day", 1),
-    ("One Week Strong", "Reach a 7-day streak", 7),
-    ("Locked In", "Reach a 14-day streak", 14),
-    ("Discipline", "Reach a 30-day streak", 30),
-    ("Unstoppable", "Reach a 100-day streak", 100),
-]
-
-
-def build_achievements_screen(database: Database, streaks: StreakService) -> ft.Control:
-    streak = streaks.snapshot()
-    best = int(streak["longest_streak"])
+def build_achievements_screen(database: Database) -> ft.Control:
+    achievements = AchievementService(database).list_all()
+    unlocked_count = sum(1 for item in achievements if bool(item["unlocked"]))
     cards = []
-    for title, description, requirement in ACHIEVEMENTS:
-        unlocked = best >= requirement or (
-            requirement == 1 and int(streak["total_completed_days"]) >= 1
-        )
+    for item in achievements:
+        unlocked = bool(item["unlocked"])
         cards.append(
             ft.Container(
                 bgcolor=CARD_BG,
@@ -45,8 +34,9 @@ def build_achievements_screen(database: Database, streaks: StreakService) -> ft.
                             expand=True,
                             spacing=3,
                             controls=[
-                                ft.Text(title, size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.BOLD),
-                                ft.Text(description, size=12, color=TEXT_MUTED),
+                                ft.Text(item["title"], size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.BOLD),
+                                ft.Text(item["description"], size=12, color=TEXT_MUTED),
+                                ft.Text("Unlocked · +50 XP" if unlocked else "Locked", size=10, color=STREAK if unlocked else TEXT_MUTED),
                             ],
                         ),
                     ],
@@ -63,7 +53,7 @@ def build_achievements_screen(database: Database, streaks: StreakService) -> ft.
             spacing=14,
             controls=[
                 ft.Text("Achievements", size=28, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
-                ft.Text("Milestones earned through consistency.", size=14, color=TEXT_MUTED),
+                ft.Text(f"{unlocked_count} / {len(achievements)} unlocked", size=14, color=TEXT_MUTED),
                 *cards,
             ],
         ),

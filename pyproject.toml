@@ -1,6 +1,6 @@
 [project]
 name = "arc-life-tracker"
-version = "0.1.0"
+version = "0.9.0"
 description = "Premium offline-first daily life tracker built with Python, Flet and SQLite."
 requires-python = ">=3.10"
 dependencies = [
@@ -11,6 +11,12 @@ dependencies = [
 product = "ARC Daily Life Tracker"
 org = "com.nityansh.arc"
 company = "Nityansh"
+bundle_id = "com.nityansh.arc"
+build_version = "0.9.0"
+build_number = 9
 
 [tool.flet.app]
 path = "."
+
+[tool.flet.android]
+split_per_abi = false

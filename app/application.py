@@ -8,26 +8,36 @@ from app.screens.analytics import build_analytics_screen
 from app.screens.calendar import build_calendar_screen
 from app.screens.habits import build_habits_screen
 from app.screens.home import build_home_screen
+from app.screens.onboarding import build_onboarding_screen
 from app.screens.profile import build_profile_screen
+from app.services.achievement_service import AchievementService
 from app.services.database import Database
+from app.services.day_service import DayService
 from app.services.habit_service import HabitService
+from app.services.settings_service import SettingsService
 from app.services.streak_service import StreakService
-from app.utils.constants import APP_BG, ACCENT
+from app.utils.constants import ACCENT, APP_BG
 
 
 class ArcApplication:
-    """Root controller for page configuration, navigation and service wiring."""
+    """Root controller for navigation, first launch, and service wiring."""
 
     def __init__(self, page: ft.Page) -> None:
         self.page = page
         self.database = Database()
         self.database.initialize()
+        self.settings = SettingsService(self.database)
         self.habits = HabitService(self.database)
         self.streaks = StreakService(self.database)
+        self.days = DayService(self.database)
+        self.achievements = AchievementService(self.database)
         self.selected_index = 0
         self.subview: str | None = None
 
         self._configure_page()
+        if self.settings.get_bool("onboarding_complete"):
+            self.days.sync_history()
+            self.achievements.sync()
         self.render()
 
     def _configure_page(self) -> None:
@@ -40,6 +50,19 @@ class ArcApplication:
 
     def render(self) -> None:
         self.page.controls.clear()
+
+        if not self.settings.get_bool("onboarding_complete"):
+            self.page.navigation_bar = None
+            self.page.add(
+                build_onboarding_screen(
+                    page=self.page,
+                    database=self.database,
+                    settings=self.settings,
+                    on_finish=self._finish_onboarding,
+                )
+            )
+            self.page.update()
+            return
 
         if self.subview == "habits":
             self.page.navigation_bar = None
@@ -56,15 +79,24 @@ class ArcApplication:
 
         screens = [
             lambda: build_home_screen(
-                self.habits,
-                self.streaks,
-                self.render,
-                self._open_habits,
+                page=self.page,
+                database=self.database,
+                habits=self.habits,
+                streaks=self.streaks,
+                days=self.days,
+                on_refresh=self.render,
+                on_manage_habits=self._open_habits,
             ),
-            lambda: build_calendar_screen(self.database),
+            lambda: build_calendar_screen(self.page, self.database, self.days),
             lambda: build_analytics_screen(self.database, self.streaks),
-            lambda: build_achievements_screen(self.database, self.streaks),
-            lambda: build_profile_screen(self.database, self.streaks),
+            lambda: build_achievements_screen(self.database),
+            lambda: build_profile_screen(
+                page=self.page,
+                database=self.database,
+                streaks=self.streaks,
+                on_manage_habits=self._open_habits,
+                on_refresh=self.render,
+            ),
         ]
 
         self.page.add(screens[self.selected_index]())
@@ -73,6 +105,11 @@ class ArcApplication:
             on_change=self._on_navigation_change,
         )
         self.page.update()
+
+    def _finish_onboarding(self) -> None:
+        self.days.sync_history()
+        self.achievements.sync()
+        self.render()
 
     def _open_habits(self) -> None:
         self.subview = "habits"

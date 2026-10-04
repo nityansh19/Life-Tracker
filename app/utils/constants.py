@@ -1,3 +1,5 @@
+APP_VERSION = "0.9.0-beta"
+
 APP_BG = "#0A0A0D"
 CARD_BG = "#141419"
 CARD_BG_ALT = "#191920"
@@ -28,13 +30,20 @@ HABIT_CATEGORIES = [
 WEEKDAY_CODES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
+MOTIVATION = (
+    "Consistency beats motivation.",
+    "Don't break the streak.",
+    "Small wins become massive results.",
+    "You're building the person you said you wanted to become.",
+)
+
 STARTER_HABITS = [
     {"name": "10,000 Steps", "icon": "directions_walk", "category": "Fitness", "goal_type": "number", "goal_amount": 10000, "unit": "steps", "required": 1, "schedule": "daily"},
-    {"name": "Workout", "icon": "fitness_center", "category": "Fitness", "goal_type": "boolean", "goal_amount": 1, "unit": "session", "required": 1, "schedule": "daily"},
+    {"name": "Workout", "icon": "fitness_center", "category": "Fitness", "goal_type": "boolean", "goal_amount": 1, "unit": "completion", "required": 1, "schedule": "daily"},
     {"name": "Water", "icon": "water_drop", "category": "Health", "goal_type": "number", "goal_amount": 3500, "unit": "ml", "required": 1, "schedule": "daily"},
     {"name": "Study", "icon": "school", "category": "Study", "goal_type": "number", "goal_amount": 120, "unit": "minutes", "required": 1, "schedule": "daily"},
-    {"name": "Coding / Skill Learning", "icon": "code", "category": "Coding", "goal_type": "boolean", "goal_amount": 1, "unit": "session", "required": 1, "schedule": "daily"},
-    {"name": "Skincare", "icon": "spa", "category": "Personal Growth", "goal_type": "boolean", "goal_amount": 1, "unit": "routine", "required": 1, "schedule": "daily"},
-    {"name": "Read", "icon": "menu_book", "category": "Personal Growth", "goal_type": "boolean", "goal_amount": 1, "unit": "session", "required": 0, "schedule": "daily"},
-    {"name": "Sleep on Time", "icon": "bedtime", "category": "Sleep", "goal_type": "boolean", "goal_amount": 1, "unit": "night", "required": 1, "schedule": "daily"},
+    {"name": "Coding / Skill Learning", "icon": "code", "category": "Coding", "goal_type": "boolean", "goal_amount": 1, "unit": "completion", "required": 1, "schedule": "daily"},
+    {"name": "Skincare", "icon": "spa", "category": "Personal Growth", "goal_type": "boolean", "goal_amount": 1, "unit": "completion", "required": 1, "schedule": "daily"},
+    {"name": "Read", "icon": "menu_book", "category": "Personal Growth", "goal_type": "boolean", "goal_amount": 1, "unit": "completion", "required": 0, "schedule": "daily"},
+    {"name": "Sleep on Time", "icon": "bedtime", "category": "Sleep", "goal_type": "boolean", "goal_amount": 1, "unit": "completion", "required": 1, "schedule": "daily"},
 ]

@@ -5,6 +5,7 @@ from datetime import date, datetime
 from app.models.habit import Habit
 from app.services.database import Database
 from app.services.streak_service import StreakService
+from app.services.xp_service import XpService
 from app.utils.constants import HABIT_CATEGORIES, WEEKDAY_CODES
 from app.utils.dates import today_iso
 
@@ -13,6 +14,7 @@ class HabitService:
     def __init__(self, database: Database) -> None:
         self.database = database
         self.streaks = StreakService(database)
+        self.xp = XpService(database)
 
     def get_all_habits(self, active_only: bool | None = True) -> list[Habit]:
         query = "SELECT * FROM habits"
@@ -27,26 +29,21 @@ class HabitService:
 
     def get_habit(self, habit_id: int) -> Habit:
         with self.database.connection() as connection:
-            row = connection.execute(
-                "SELECT * FROM habits WHERE id = ?",
-                (habit_id,),
-            ).fetchone()
+            row = connection.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
         if row is None:
             raise ValueError(f"Habit {habit_id} does not exist")
         return Habit.from_row(row)
 
-    def get_habits(self, day: str | date | None = None) -> list[Habit]:
-        if day is None:
-            target_day = date.today()
-        elif isinstance(day, date):
-            target_day = day
-        else:
-            target_day = date.fromisoformat(day)
-        return [
-            habit
-            for habit in self.get_all_habits(active_only=True)
-            if habit.scheduled_for(target_day)
-        ]
+    def get_habits(self, day: str | date | None = None, include_archived_history: bool = False) -> list[Habit]:
+        target_day = date.today() if day is None else day if isinstance(day, date) else date.fromisoformat(day)
+        pool = self.get_all_habits(active_only=None if include_archived_history else True)
+        result: list[Habit] = []
+        for habit in pool:
+            if not habit.scheduled_for(target_day) or not habit.existed_on(target_day):
+                continue
+            if habit.active or include_archived_history:
+                result.append(habit)
+        return result
 
     def create_habit(
         self,
@@ -69,24 +66,18 @@ class HabitService:
             schedule=schedule,
         )
         clean_name, clean_category, clean_type, clean_amount, clean_unit, clean_schedule = fields
+        now = datetime.now().isoformat(timespec="seconds")
         with self.database.connection() as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO habits(
                     name, icon, category, goal_type, goal_amount,
-                    unit, required, schedule, active, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    unit, required, schedule, active, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 """,
                 (
-                    clean_name,
-                    icon or "check_circle",
-                    clean_category,
-                    clean_type,
-                    clean_amount,
-                    clean_unit,
-                    int(required),
-                    clean_schedule,
-                    datetime.now().isoformat(timespec="seconds"),
+                    clean_name, icon or "check_circle", clean_category, clean_type,
+                    clean_amount, clean_unit, int(required), clean_schedule, now, now,
                 ),
             )
             habit_id = int(cursor.lastrowid)
@@ -115,32 +106,22 @@ class HabitService:
             schedule=schedule,
         )
         clean_name, clean_category, clean_type, clean_amount, clean_unit, clean_schedule = fields
-
+        now = datetime.now().isoformat(timespec="seconds")
         with self.database.connection() as connection:
             connection.execute(
                 """
                 UPDATE habits
                 SET name = ?, category = ?, goal_type = ?, goal_amount = ?,
-                    unit = ?, required = ?, schedule = ?
+                    unit = ?, required = ?, schedule = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
-                    clean_name,
-                    clean_category,
-                    clean_type,
-                    clean_amount,
-                    clean_unit,
-                    int(required),
-                    clean_schedule,
-                    habit_id,
+                    clean_name, clean_category, clean_type, clean_amount, clean_unit,
+                    int(required), clean_schedule, now, habit_id,
                 ),
             )
             progress = connection.execute(
-                """
-                SELECT value
-                FROM daily_habit_progress
-                WHERE habit_id = ? AND date = ?
-                """,
+                "SELECT value FROM daily_habit_progress WHERE habit_id = ? AND date = ?",
                 (habit_id, today_iso()),
             ).fetchone()
             if progress is not None:
@@ -151,25 +132,28 @@ class HabitService:
                     SET completed = ?, updated_at = ?
                     WHERE habit_id = ? AND date = ?
                     """,
-                    (
-                        completed,
-                        datetime.now().isoformat(timespec="seconds"),
-                        habit_id,
-                        today_iso(),
-                    ),
+                    (completed, now, habit_id, today_iso()),
                 )
         self.evaluate_day()
 
     def archive_habit(self, habit_id: int) -> None:
         self.get_habit(habit_id)
+        now = datetime.now().isoformat(timespec="seconds")
         with self.database.connection() as connection:
-            connection.execute("UPDATE habits SET active = 0 WHERE id = ?", (habit_id,))
+            connection.execute(
+                "UPDATE habits SET active = 0, archived_at = ?, updated_at = ? WHERE id = ?",
+                (now, now, habit_id),
+            )
         self.evaluate_day()
 
     def restore_habit(self, habit_id: int) -> None:
         self.get_habit(habit_id)
+        now = datetime.now().isoformat(timespec="seconds")
         with self.database.connection() as connection:
-            connection.execute("UPDATE habits SET active = 1 WHERE id = ?", (habit_id,))
+            connection.execute(
+                "UPDATE habits SET active = 1, archived_at = NULL, updated_at = ? WHERE id = ?",
+                (now, habit_id),
+            )
         self.evaluate_day()
 
     def delete_habit_permanently(self, habit_id: int) -> None:
@@ -190,38 +174,43 @@ class HabitService:
             for row in rows
         }
 
-    def toggle_boolean(self, habit_id: int) -> None:
-        day = today_iso()
+    def toggle_boolean(self, habit_id: int, day: str | None = None) -> dict[str, float | int | bool]:
+        day = day or today_iso()
         habit = self.get_habit(habit_id)
         if habit.goal_type != "boolean":
             raise ValueError("Only boolean habits can be toggled")
         progress = self.get_progress_map(day).get(habit_id, {"completed": False})
         new_value = 0 if progress["completed"] else 1
         self._write_progress(habit_id, day, new_value)
-        self.evaluate_day(day)
+        return self.evaluate_day(day)
 
-    def increment(self, habit_id: int, amount: float) -> None:
-        day = today_iso()
+    def increment(self, habit_id: int, amount: float, day: str | None = None) -> dict[str, float | int | bool]:
+        day = day or today_iso()
         habit = self.get_habit(habit_id)
         if habit.goal_type != "number":
             raise ValueError("Only number-based habits can be incremented")
         progress = self.get_progress_map(day).get(habit_id, {"value": 0.0})
-        new_value = max(0, float(progress["value"]) + amount)
-        self._write_progress(habit_id, day, new_value)
-        self.evaluate_day(day)
+        self._write_progress(habit_id, day, max(0, float(progress["value"]) + amount))
+        return self.evaluate_day(day)
 
-    def set_value(self, habit_id: int, value: float) -> None:
+    def set_value(self, habit_id: int, value: float, day: str | None = None) -> dict[str, float | int | bool]:
+        day = day or today_iso()
         habit = self.get_habit(habit_id)
         if habit.goal_type != "number":
             raise ValueError("Only number-based habits accept numeric values")
-        self._write_progress(habit_id, today_iso(), max(0, value))
-        self.evaluate_day()
+        self._write_progress(habit_id, day, max(0, value))
+        return self.evaluate_day(day)
 
     def _write_progress(self, habit_id: int, day: str, value: float) -> None:
         with self.database.connection() as connection:
             habit = connection.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
             if habit is None:
                 raise ValueError(f"Habit {habit_id} does not exist")
+            previous = connection.execute(
+                "SELECT completed FROM daily_habit_progress WHERE habit_id = ? AND date = ?",
+                (habit_id, day),
+            ).fetchone()
+            was_completed = bool(previous["completed"]) if previous else False
             completed = int(value >= float(habit["goal_amount"]))
             connection.execute(
                 """
@@ -234,6 +223,8 @@ class HabitService:
                 """,
                 (habit_id, day, value, completed, datetime.now().isoformat(timespec="seconds")),
             )
+        if completed and not was_completed:
+            self.xp.award_once(f"habit:{day}:{habit_id}", 10)
 
     def evaluate_day(self, day: str | None = None) -> dict[str, float | int | bool]:
         day = day or today_iso()
@@ -244,36 +235,50 @@ class HabitService:
             1 for habit in required if progress.get(habit.id, {}).get("completed", False)
         )
         all_completed = bool(required) and required_completed == len(required)
-        percentage = (required_completed / len(required) * 100) if required else 100.0
+        percentage = (required_completed / len(required) * 100) if required else 0.0
+        now = datetime.now().isoformat(timespec="seconds")
 
         with self.database.connection() as connection:
+            existing = connection.execute(
+                "SELECT completed, completed_at FROM daily_completion WHERE date = ?",
+                (day,),
+            ).fetchone()
+            ever_completed = bool(existing and existing["completed_at"])
+            completed_at = existing["completed_at"] if ever_completed else now if all_completed else None
             connection.execute(
                 """
-                INSERT INTO daily_completion(date, completed, completion_percentage, completed_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO daily_completion(
+                    date, completed, completion_percentage, scheduled_required,
+                    completed_required, completed_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
                     completed = excluded.completed,
                     completion_percentage = excluded.completion_percentage,
-                    completed_at = CASE
-                        WHEN excluded.completed = 1 AND daily_completion.completed_at IS NULL
-                        THEN excluded.completed_at
-                        ELSE daily_completion.completed_at
-                    END
+                    scheduled_required = excluded.scheduled_required,
+                    completed_required = excluded.completed_required,
+                    completed_at = COALESCE(daily_completion.completed_at, excluded.completed_at),
+                    updated_at = excluded.updated_at
                 """,
                 (
-                    day,
-                    int(all_completed),
-                    round(percentage, 2),
-                    datetime.now().isoformat(timespec="seconds") if all_completed else None,
+                    day, int(all_completed), round(percentage, 2), len(required),
+                    required_completed, completed_at, now,
                 ),
             )
 
+        newly_completed = all_completed and not ever_completed
+        if newly_completed:
+            self.xp.award_once(f"perfect_day:{day}", 100)
         self.streaks.recalculate()
+
+        from app.services.achievement_service import AchievementService
+        AchievementService(self.database).sync()
+
         return {
             "required_total": len(required),
             "required_completed": required_completed,
             "percentage": percentage,
             "day_completed": all_completed,
+            "newly_completed": newly_completed,
         }
 
     def dashboard_snapshot(self) -> dict:
@@ -320,11 +325,4 @@ class HabitService:
                 raise ValueError("Choose at least one day")
             clean_schedule = "daily" if len(selected) == 7 else ",".join(selected)
 
-        return (
-            clean_name,
-            clean_category,
-            clean_type,
-            clean_amount,
-            clean_unit,
-            clean_schedule,
-        )
+        return clean_name, clean_category, clean_type, clean_amount, clean_unit, clean_schedule

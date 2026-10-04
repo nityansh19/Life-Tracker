@@ -1,0 +1,23 @@
+name: Build Android Beta APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Flet
+        run: pip install -r requirements.txt
+      - name: Build ARC Android APK
+        run: flet build apk --build-version 0.9.0 --build-number 9
+      - name: Upload beta APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-android-beta
+          path: build/apk/*.apk
+          if-no-files-found: error
