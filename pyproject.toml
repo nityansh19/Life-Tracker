@@ -1,0 +1,16 @@
+[project]
+name = "arc-life-tracker"
+version = "0.1.0"
+description = "Premium offline-first daily life tracker built with Python, Flet and SQLite."
+requires-python = ">=3.10"
+dependencies = [
+    "flet==1.0.3",
+]
+
+[tool.flet]
+product = "ARC Daily Life Tracker"
+org = "com.nityansh.arc"
+company = "Nityansh"
+
+[tool.flet.app]
+path = "."
