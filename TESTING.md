@@ -1,37 +1,47 @@
-# ARC Beta Testing Checklist
+# ARC 1.0 Release Candidate Testing
 
-This build is intended for the first closed testing round.
+## Public launch flow
 
-## Critical flows
+1. Fresh install must open the public ARC feature preview.
+2. Preview users must not be able to reach habit data without signing in.
+3. Create an account with email + password.
+4. If email confirmation is enabled, verify the email and then sign in.
+5. Complete onboarding and confirm the Home screen opens.
+6. Log out. ARC should return to the public preview.
+7. Sign back in. The same ARC data should restore from Supabase.
 
-1. Fresh install opens onboarding and saves the selected name, starter habits, and journey date.
-2. Mark boolean habits complete, add steps/water/study progress, then force-close and reopen the app. Values must persist.
-3. Complete every required habit. The perfect-day dialog should appear once, XP should increase once, and the streak should update.
-4. Toggle a completed habit off and on again. Habit XP and perfect-day XP must not be awarded twice.
-5. Create a custom numeric habit with selected weekdays. It should only appear on scheduled days.
-6. Archive a habit. It should leave today's dashboard while previous stored progress remains available in history.
-7. Open Calendar and tap a past day. The app should show completed/missed habits and the saved percentage.
-8. Verify Progress shows weekly/monthly completion plus the weekly report.
-9. Verify Achievements unlock when their stored criteria are reached.
-10. Change the profile name and journey date and reopen the app.
+## Cloud/offline tests
 
-## Date rollover test
+1. Complete a habit while online and tap Profile -> Sync now.
+2. Force-close ARC, reopen, and confirm the secure session restores.
+3. Turn off internet and update a habit. ARC must continue working from SQLite.
+4. Re-enable internet and tap Sync now. Cloud status should return to Synced.
+5. On a second clean device/install, sign into the same account and confirm the cloud snapshot restores.
+6. Sign into a different account on the same device. The previous account's local data must not appear.
 
-For a controlled test, use a separate test database/device. Leave at least one required goal incomplete, close ARC before midnight, then reopen it the next day. The previous day should be stored as incomplete and the new day should start clean.
+## Existing beta-user migration
 
-## Android UI checks
+On the first account login after upgrading from 0.9.0, existing local beta data should be adopted by that account if no cloud snapshot already exists.
 
-- Small phone width
-- Tall phone width
-- Scrolling with many habits
-- Keyboard open inside Add/Edit Habit
-- Bottom navigation remains usable
-- Dialogs fit without clipping
-- No horizontal overflow on long habit names
+## Security checks
 
-## Report bugs with
+- Users must only be able to read/write their own arc_profiles and arc_user_state rows.
+- The mobile app contains only the Supabase publishable key, never a secret/service-role key.
+- The plan field defaults to free and cannot be edited by the mobile client.
+- Session tokens are stored through Android secure storage.
+- Android app backup is disabled for secure-storage compatibility.
+- Before public release, enable Supabase Auth leaked-password protection in the project dashboard.
 
-- Device / Android version
-- Exact steps to reproduce
-- Screenshot if visual
-- Whether the bug survives app restart
+## Existing tracker regression
+
+Run through:
+- custom habit create/edit/archive/restore
+- weekday scheduling
+- perfect day and XP
+- streaks
+- calendar day detail
+- analytics
+- weekly report
+- achievements
+- profile edits
+- restart persistence

@@ -1,4 +1,4 @@
-name: Build Android Beta APK
+name: Build Android Release Candidate
 
 on:
   workflow_dispatch:
@@ -14,13 +14,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Flet
+      - name: Install Linux build dependency
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
+      - name: Install ARC dependencies
         run: pip install -r requirements.txt
       - name: Build ARC Android APK
-        run: flet build apk --yes --build-version 0.9.0 --build-number 9
-      - name: Upload beta APK
+        run: flet build apk --yes --build-version 1.0.0 --build-number 10
+      - name: Upload release candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: arc-android-beta
+          name: arc-android-1.0.0-rc1
           path: build/apk/*.apk
           if-no-files-found: error

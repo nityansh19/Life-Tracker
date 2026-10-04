@@ -1,60 +1,66 @@
 # ARC — Daily Life Tracker
 
-ARC is a polished offline-first self-improvement app built with Python, Flet, and SQLite. It is designed around a simple loop: open today's mission, complete the habits that matter, protect your streak, inspect your history, and improve your consistency over time.
+ARC is an offline-first self-improvement app built with Python, Flet, SQLite and Supabase.
 
-## Beta feature set
+## ARC 1.0 RC1
 
-- Premium dark-first mobile UI with five-tab navigation
-- First-launch onboarding and starter-goal selection
-- Boolean and numeric habits
-- Steps, water, study-duration and custom-unit tracking
-- Custom habit creation, editing, scheduling, archive/restore and safe deletion
-- Required vs optional goals
-- Schedule-aware perfect-day engine
-- Persistent SQLite history with missed-day backfilling
-- Current streak, best streak and perfect-day tracking
-- One-time XP awards for completed habits, perfect days, streak milestones and achievements
-- Level system with Starter, Consistent, Disciplined, Locked In and Unstoppable ranks
-- Detailed current-month calendar and tappable day history
-- 7-day / 30-day completion analytics
-- Steps, water, study and workout consistency statistics
-- Weekly self-improvement report with week-over-week comparison
-- Achievement engine for streak, steps, hydration, study and workout milestones
-- Today summary and perfect-day celebration flow
-- Editable profile and journey start date
-- Offline reminder preferences ready for a future native notification integration
-- Automated core-engine tests and a manual Android beta build workflow
+ARC now has a complete public-to-private product flow:
+
+- Public feature preview before account creation
+- Email/password signup and login with Supabase Auth
+- Secure Android session persistence
+- Private per-user cloud data with Row Level Security
+- Offline SQLite tracking with Supabase cloud backup
+- Automatic cloud restore when a user signs in on another device
+- Existing beta data adoption for the first account after upgrading
+- Free account plan today with server-controlled premium readiness for later
+- Logout, manual sync and cloud status in Profile
+
+The tracker itself includes:
+
+- first-launch onboarding
+- boolean and numeric habits
+- custom habits, editing, schedules, archive and restore
+- required vs optional goals
+- perfect-day engine
+- streaks, XP, levels and achievements
+- calendar history
+- weekly/monthly analytics
+- weekly self-improvement report
+- offline persistence and missed-day handling
+
+## Security model
+
+The APK contains only the Supabase project URL and publishable client key. It never contains a secret or service-role key.
+
+ARC cloud tables use Row Level Security so authenticated users can only access their own rows. The account `plan` column is not updateable by the mobile client; future premium upgrades must come from a trusted backend/admin path.
+
+Auth refresh tokens are stored using Flet SecureStorage, backed by Android Keystore.
 
 ## Run locally
 
-\`\`\`bash
+```bash
 python -m venv .venv
-# activate the environment
+# activate it
 pip install -r requirements.txt
 flet run main.py
-\`\`\`
+```
 
-## Run core tests
+## Tests
 
-\`\`\`bash
-python -m unittest discover -s tests -v
+```bash
 python -m compileall -q app main.py
-\`\`\`
+python -m unittest discover -s tests -v
+```
 
-## Build Android beta
+## Android
 
-Flet supports Android APK builds on Linux, macOS, and Windows:
+```bash
+flet build apk --yes --build-version 1.0.0 --build-number 10
+```
 
-\`\`\`bash
-flet build apk
-\`\`\`
+A GitHub Actions workflow also produces an installable release-candidate APK artifact.
 
-The repository also contains a manually triggered GitHub Actions workflow that builds an APK and uploads it as a workflow artifact for testers.
+## Before public release
 
-## Data
-
-ARC is offline-first. User data is stored locally in SQLite. Existing Phase 1/2 databases are upgraded through lightweight schema migrations rather than being replaced.
-
-## Beta status
-
-Version \`0.9.0-beta\` is feature-complete for the first closed testing round. Testing should focus on first launch, habit editing, date rollover, streak behavior, Android layout/orientation, and persistence after force-closing the app.
+Supabase Security Advisor currently reports one project-wide Auth recommendation: enable leaked-password protection in the Supabase Auth dashboard. ARC table RLS and performance checks are otherwise clean.

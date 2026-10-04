@@ -11,7 +11,18 @@ from app.utils.constants import APP_VERSION, STARTER_HABITS
 
 
 class Database:
-    """SQLite gateway with lightweight migrations for existing ARC installs."""
+    """SQLite gateway with migrations plus cloud snapshot import/export."""
+
+    SNAPSHOT_TABLES = (
+        "users",
+        "habits",
+        "daily_habit_progress",
+        "daily_completion",
+        "streaks",
+        "achievements",
+        "settings",
+        "xp_events",
+    )
 
     def __init__(self, filename: str = "arc_tracker.db", data_dir: str | Path | None = None) -> None:
         if data_dir is not None:
@@ -164,6 +175,93 @@ class Database:
                 "UPDATE settings SET value = ? WHERE key = 'app_version'",
                 (APP_VERSION,),
             )
+
+    def export_state(self) -> dict:
+        state: dict[str, list[dict]] = {}
+        with self.connection() as connection:
+            for table in self.SNAPSHOT_TABLES:
+                rows = connection.execute(f"SELECT * FROM {table}").fetchall()
+                data = [dict(row) for row in rows]
+                if table == "settings":
+                    data = [row for row in data if row.get("key") != "cloud_owner_id"]
+                state[table] = data
+        return state
+
+    def import_state(self, state: dict) -> None:
+        if not isinstance(state, dict):
+            raise ValueError("Invalid ARC cloud state")
+
+        delete_order = (
+            "daily_habit_progress",
+            "daily_completion",
+            "xp_events",
+            "achievements",
+            "streaks",
+            "habits",
+            "users",
+            "settings",
+        )
+        insert_order = (
+            "users",
+            "habits",
+            "daily_habit_progress",
+            "daily_completion",
+            "streaks",
+            "achievements",
+            "settings",
+            "xp_events",
+        )
+
+        with self.connection() as connection:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            try:
+                for table in delete_order:
+                    connection.execute(f"DELETE FROM {table}")
+
+                for table in insert_order:
+                    rows = state.get(table, [])
+                    if not isinstance(rows, list):
+                        continue
+                    allowed = {
+                        row["name"]
+                        for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+                    }
+                    for raw in rows:
+                        if not isinstance(raw, dict):
+                            continue
+                        row = {key: value for key, value in raw.items() if key in allowed}
+                        if not row:
+                            continue
+                        columns = list(row.keys())
+                        placeholders = ", ".join("?" for _ in columns)
+                        names = ", ".join(columns)
+                        connection.execute(
+                            f"INSERT INTO {table} ({names}) VALUES ({placeholders})",
+                            tuple(row[column] for column in columns),
+                        )
+            finally:
+                connection.execute("PRAGMA foreign_keys = ON")
+
+        self.initialize()
+
+    def reset_user_state(self) -> None:
+        with self.connection() as connection:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            try:
+                for table in (
+                    "daily_habit_progress",
+                    "daily_completion",
+                    "xp_events",
+                    "achievements",
+                    "streaks",
+                    "habits",
+                    "users",
+                    "settings",
+                ):
+                    connection.execute(f"DELETE FROM {table}")
+            finally:
+                connection.execute("PRAGMA foreign_keys = ON")
+        self.initialize()
 
     @staticmethod
     def _ensure_column(connection: sqlite3.Connection, table: str, column: str, declaration: str) -> None:

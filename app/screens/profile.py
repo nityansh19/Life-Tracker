@@ -6,7 +6,7 @@ from app.services.settings_service import SettingsService
 from app.services.streak_service import StreakService
 from app.services.user_service import UserService
 from app.services.xp_service import XpService
-from app.utils.constants import ACCENT, APP_BG, APP_VERSION, BORDER, CARD_BG, TEXT_MUTED, TEXT_PRIMARY
+from app.utils.constants import ACCENT, APP_BG, APP_VERSION, BORDER, CARD_BG, STREAK, TEXT_MUTED, TEXT_PRIMARY
 
 
 def build_profile_screen(
@@ -15,6 +15,11 @@ def build_profile_screen(
     streaks: StreakService,
     on_manage_habits,
     on_refresh,
+    account_email: str = "",
+    plan: str = "free",
+    cloud_status: str = "Synced",
+    on_sync=None,
+    on_logout=None,
 ) -> ft.Control:
     user_service = UserService(database)
     settings = SettingsService(database)
@@ -60,14 +65,18 @@ def build_profile_screen(
 
     def save_morning(e) -> None:
         settings.set("reminder_morning", bool(morning.value))
+        on_refresh()
 
     def save_evening(e) -> None:
         settings.set("reminder_evening", bool(evening.value))
+        on_refresh()
 
     morning.on_change = save_morning
     evening.on_change = save_evening
 
     study_hours = totals["total_study_minutes"] / 60
+    plan_label = "PREMIUM" if plan.lower() == "premium" else "FREE"
+    plan_color = STREAK if plan.lower() == "premium" else ACCENT
 
     return ft.Container(
         expand=True,
@@ -106,6 +115,60 @@ def build_profile_screen(
                         ],
                     ),
                 ),
+                ft.Container(
+                    bgcolor=CARD_BG,
+                    border=ft.Border.all(1, BORDER),
+                    border_radius=20,
+                    padding=16,
+                    content=ft.Column(
+                        spacing=10,
+                        controls=[
+                            ft.Row(
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                controls=[
+                                    ft.Column(
+                                        spacing=2,
+                                        controls=[
+                                            ft.Text("ARC ACCOUNT", size=10, color=TEXT_MUTED, weight=ft.FontWeight.BOLD),
+                                            ft.Text(account_email or "Signed in", size=13, color=TEXT_PRIMARY),
+                                        ],
+                                    ),
+                                    ft.Container(
+                                        bgcolor="#201A38" if plan_label == "FREE" else "#3A2417",
+                                        border_radius=20,
+                                        padding=ft.Padding(left=10, right=10, top=5, bottom=5),
+                                        content=ft.Text(plan_label, size=10, color=plan_color, weight=ft.FontWeight.BOLD),
+                                    ),
+                                ],
+                            ),
+                            ft.Row(
+                                controls=[
+                                    ft.Icon(ft.Icons.CLOUD_DONE_OUTLINED, size=18, color=ACCENT),
+                                    ft.Text(cloud_status, size=12, color=TEXT_MUTED),
+                                ]
+                            ),
+                            ft.Text(
+                                "Premium upgrades are coming later. Core tracking and cloud backup remain available on the free plan.",
+                                size=11,
+                                color=TEXT_MUTED,
+                            ),
+                            ft.Row(
+                                controls=[
+                                    ft.OutlinedButton(
+                                        content="Sync now",
+                                        icon=ft.Icons.SYNC,
+                                        on_click=on_sync,
+                                    ),
+                                    ft.TextButton(
+                                        content="Log out",
+                                        icon=ft.Icons.LOGOUT,
+                                        on_click=on_logout,
+                                    ),
+                                ]
+                            ),
+                        ],
+                    ),
+                ),
                 ft.Row(
                     controls=[
                         _stat("Current streak", f"{streak['current_streak']}d"),
@@ -138,7 +201,7 @@ def build_profile_screen(
                             morning,
                             evening,
                             ft.Text(
-                                "Preferences are stored locally and the app is structured for native notification support in a later integration.",
+                                "Preferences sync with your ARC state. Native scheduled notifications can be added in the premium/notification phase later.",
                                 size=11,
                                 color=TEXT_MUTED,
                             ),
@@ -153,8 +216,12 @@ def build_profile_screen(
                     content=ft.Column(
                         spacing=5,
                         controls=[
-                            ft.Text("Offline first", weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
-                            ft.Text("Your habits, progress, streaks and history are stored in local SQLite.", size=12, color=TEXT_MUTED),
+                            ft.Text("Offline first + cloud backed", weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
+                            ft.Text(
+                                "ARC keeps a local SQLite copy for speed and offline use, then backs your account state up to Supabase when online.",
+                                size=12,
+                                color=TEXT_MUTED,
+                            ),
                             ft.Text(f"ARC {APP_VERSION}", size=11, color=TEXT_MUTED),
                         ],
                     ),
