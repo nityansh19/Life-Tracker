@@ -1,4 +1,4 @@
-APP_VERSION = "1.0.0-rc1"
+APP_VERSION = "1.0.0-rc2"
 
 APP_BG = "#0A0A0D"
 CARD_BG = "#141419"

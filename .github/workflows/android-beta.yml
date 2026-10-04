@@ -19,10 +19,10 @@ jobs:
       - name: Install ARC dependencies
         run: pip install -r requirements.txt
       - name: Build ARC Android APK
-        run: flet build apk --yes --build-version 1.0.0 --build-number 10
+        run: flet build apk --yes --build-version 1.0.0 --build-number 11
       - name: Upload release candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: arc-android-1.0.0-rc1
+          name: arc-android-1.0.0-rc2
           path: build/apk/*.apk
           if-no-files-found: error

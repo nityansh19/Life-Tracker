@@ -1,6 +1,6 @@
 [project]
 name = "arc-life-tracker"
-version = "1.0.0rc1"
+version = "1.0.0rc2"
 description = "Offline-first daily life tracker with secure accounts and Supabase cloud backup."
 requires-python = ">=3.10"
 dependencies = [
@@ -15,7 +15,7 @@ org = "com.nityansh.arc"
 company = "Nityansh"
 bundle_id = "com.nityansh.arc"
 build_version = "1.0.0"
-build_number = 10
+build_number = 11
 
 [tool.flet.app]
 path = "."

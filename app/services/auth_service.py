@@ -104,8 +104,21 @@ class AuthService:
             return AuthResult(False, self._friendly_error(exc))
 
     def ensure_profile(self, display_name: str | None = None) -> dict:
+        """Return the user's ARC profile, creating it once when missing.
+
+        Do not use UPSERT here. ARC intentionally grants authenticated users
+        UPDATE access only to editable profile columns, while the server-owned
+        plan column remains read-only. Postgres UPSERT requires UPDATE
+        privileges for its conflict path, even when the row may only need an
+        INSERT.
+        """
         if not self.user:
             return {}
+
+        existing = self.get_profile()
+        if existing:
+            return existing
+
         metadata = getattr(self.user, "user_metadata", None) or {}
         name = (
             display_name
@@ -113,8 +126,14 @@ class AuthService:
             or self.email.split("@")[0]
             or "ARC User"
         ).strip()
-        payload = {"user_id": self.user_id, "display_name": name[:40]}
-        self.client.table("arc_profiles").upsert(payload, on_conflict="user_id").execute()
+
+        self.client.table("arc_profiles").insert(
+            {
+                "user_id": self.user_id,
+                "display_name": name[:40],
+                "plan": "free",
+            }
+        ).execute()
         return self.get_profile()
 
     def get_profile(self) -> dict:
@@ -155,4 +174,6 @@ class AuthService:
             return "An account with this email already exists."
         if "network" in text or "connect" in text or "timeout" in text:
             return "ARC cannot reach the cloud right now. Check your internet connection."
-        return str(exc)[:180] or "Something went wrong."
+        if "permission denied" in text or "42501" in text:
+            return "ARC couldn't finish account setup. Update ARC and try again."
+        return "ARC couldn't finish signing you in. Please try again."
