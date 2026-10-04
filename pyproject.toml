@@ -5,7 +5,7 @@ description = "Offline-first daily life tracker with secure accounts and Supabas
 requires-python = ">=3.10"
 dependencies = [
     "flet==1.0.3",
-    "flet-secure-storage==1.0.1",
+    "flet-secure-storage==1.0.3",
     "supabase==2.32.0",
 ]
 
