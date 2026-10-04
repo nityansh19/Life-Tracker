@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from app.models.habit import Habit
 from app.services.database import Database
 from app.services.streak_service import StreakService
+from app.utils.constants import HABIT_CATEGORIES, WEEKDAY_CODES
 from app.utils.dates import today_iso
 
 
@@ -13,12 +14,169 @@ class HabitService:
         self.database = database
         self.streaks = StreakService(database)
 
-    def get_habits(self) -> list[Habit]:
+    def get_all_habits(self, active_only: bool | None = True) -> list[Habit]:
+        query = "SELECT * FROM habits"
+        if active_only is True:
+            query += " WHERE active = 1"
+        elif active_only is False:
+            query += " WHERE active = 0"
+        query += " ORDER BY active DESC, required DESC, id ASC"
         with self.database.connection() as connection:
-            rows = connection.execute(
-                "SELECT * FROM habits WHERE active = 1 ORDER BY required DESC, id ASC"
-            ).fetchall()
+            rows = connection.execute(query).fetchall()
         return [Habit.from_row(row) for row in rows]
+
+    def get_habit(self, habit_id: int) -> Habit:
+        with self.database.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM habits WHERE id = ?",
+                (habit_id,),
+            ).fetchone()
+        if row is None:
+            raise ValueError(f"Habit {habit_id} does not exist")
+        return Habit.from_row(row)
+
+    def get_habits(self, day: str | date | None = None) -> list[Habit]:
+        if day is None:
+            target_day = date.today()
+        elif isinstance(day, date):
+            target_day = day
+        else:
+            target_day = date.fromisoformat(day)
+        return [
+            habit
+            for habit in self.get_all_habits(active_only=True)
+            if habit.scheduled_for(target_day)
+        ]
+
+    def create_habit(
+        self,
+        *,
+        name: str,
+        category: str,
+        goal_type: str,
+        goal_amount: float,
+        unit: str,
+        required: bool,
+        schedule: str,
+        icon: str = "check_circle",
+    ) -> int:
+        fields = self._validate_habit_fields(
+            name=name,
+            category=category,
+            goal_type=goal_type,
+            goal_amount=goal_amount,
+            unit=unit,
+            schedule=schedule,
+        )
+        clean_name, clean_category, clean_type, clean_amount, clean_unit, clean_schedule = fields
+        with self.database.connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO habits(
+                    name, icon, category, goal_type, goal_amount,
+                    unit, required, schedule, active, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """,
+                (
+                    clean_name,
+                    icon or "check_circle",
+                    clean_category,
+                    clean_type,
+                    clean_amount,
+                    clean_unit,
+                    int(required),
+                    clean_schedule,
+                    datetime.now().isoformat(timespec="seconds"),
+                ),
+            )
+            habit_id = int(cursor.lastrowid)
+        self.evaluate_day()
+        return habit_id
+
+    def update_habit(
+        self,
+        habit_id: int,
+        *,
+        name: str,
+        category: str,
+        goal_type: str,
+        goal_amount: float,
+        unit: str,
+        required: bool,
+        schedule: str,
+    ) -> None:
+        self.get_habit(habit_id)
+        fields = self._validate_habit_fields(
+            name=name,
+            category=category,
+            goal_type=goal_type,
+            goal_amount=goal_amount,
+            unit=unit,
+            schedule=schedule,
+        )
+        clean_name, clean_category, clean_type, clean_amount, clean_unit, clean_schedule = fields
+
+        with self.database.connection() as connection:
+            connection.execute(
+                """
+                UPDATE habits
+                SET name = ?, category = ?, goal_type = ?, goal_amount = ?,
+                    unit = ?, required = ?, schedule = ?
+                WHERE id = ?
+                """,
+                (
+                    clean_name,
+                    clean_category,
+                    clean_type,
+                    clean_amount,
+                    clean_unit,
+                    int(required),
+                    clean_schedule,
+                    habit_id,
+                ),
+            )
+            progress = connection.execute(
+                """
+                SELECT value
+                FROM daily_habit_progress
+                WHERE habit_id = ? AND date = ?
+                """,
+                (habit_id, today_iso()),
+            ).fetchone()
+            if progress is not None:
+                completed = int(float(progress["value"]) >= clean_amount)
+                connection.execute(
+                    """
+                    UPDATE daily_habit_progress
+                    SET completed = ?, updated_at = ?
+                    WHERE habit_id = ? AND date = ?
+                    """,
+                    (
+                        completed,
+                        datetime.now().isoformat(timespec="seconds"),
+                        habit_id,
+                        today_iso(),
+                    ),
+                )
+        self.evaluate_day()
+
+    def archive_habit(self, habit_id: int) -> None:
+        self.get_habit(habit_id)
+        with self.database.connection() as connection:
+            connection.execute("UPDATE habits SET active = 0 WHERE id = ?", (habit_id,))
+        self.evaluate_day()
+
+    def restore_habit(self, habit_id: int) -> None:
+        self.get_habit(habit_id)
+        with self.database.connection() as connection:
+            connection.execute("UPDATE habits SET active = 1 WHERE id = ?", (habit_id,))
+        self.evaluate_day()
+
+    def delete_habit_permanently(self, habit_id: int) -> None:
+        self.get_habit(habit_id)
+        with self.database.connection() as connection:
+            connection.execute("DELETE FROM habits WHERE id = ?", (habit_id,))
+        self.evaluate_day()
 
     def get_progress_map(self, day: str | None = None) -> dict[int, dict[str, float | bool]]:
         day = day or today_iso()
@@ -34,6 +192,9 @@ class HabitService:
 
     def toggle_boolean(self, habit_id: int) -> None:
         day = today_iso()
+        habit = self.get_habit(habit_id)
+        if habit.goal_type != "boolean":
+            raise ValueError("Only boolean habits can be toggled")
         progress = self.get_progress_map(day).get(habit_id, {"completed": False})
         new_value = 0 if progress["completed"] else 1
         self._write_progress(habit_id, day, new_value)
@@ -41,10 +202,20 @@ class HabitService:
 
     def increment(self, habit_id: int, amount: float) -> None:
         day = today_iso()
+        habit = self.get_habit(habit_id)
+        if habit.goal_type != "number":
+            raise ValueError("Only number-based habits can be incremented")
         progress = self.get_progress_map(day).get(habit_id, {"value": 0.0})
         new_value = max(0, float(progress["value"]) + amount)
         self._write_progress(habit_id, day, new_value)
         self.evaluate_day(day)
+
+    def set_value(self, habit_id: int, value: float) -> None:
+        habit = self.get_habit(habit_id)
+        if habit.goal_type != "number":
+            raise ValueError("Only number-based habits accept numeric values")
+        self._write_progress(habit_id, today_iso(), max(0, value))
+        self.evaluate_day()
 
     def _write_progress(self, habit_id: int, day: str, value: float) -> None:
         with self.database.connection() as connection:
@@ -66,7 +237,7 @@ class HabitService:
 
     def evaluate_day(self, day: str | None = None) -> dict[str, float | int | bool]:
         day = day or today_iso()
-        habits = self.get_habits()
+        habits = self.get_habits(day)
         progress = self.get_progress_map(day)
         required = [habit for habit in habits if habit.required]
         required_completed = sum(
@@ -110,3 +281,50 @@ class HabitService:
         progress = self.get_progress_map()
         day = self.evaluate_day()
         return {"habits": habits, "progress": progress, **day}
+
+    @staticmethod
+    def _validate_habit_fields(
+        *,
+        name: str,
+        category: str,
+        goal_type: str,
+        goal_amount: float,
+        unit: str,
+        schedule: str,
+    ) -> tuple[str, str, str, float, str, str]:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Habit name is required")
+        if len(clean_name) > 60:
+            raise ValueError("Habit name must be 60 characters or fewer")
+
+        clean_category = category.strip() or "Custom"
+        if clean_category not in HABIT_CATEGORIES:
+            clean_category = "Custom"
+
+        clean_type = goal_type.strip().lower()
+        if clean_type not in {"boolean", "number"}:
+            raise ValueError("Goal type must be boolean or number")
+
+        clean_amount = 1.0 if clean_type == "boolean" else float(goal_amount)
+        if clean_amount <= 0:
+            raise ValueError("Goal amount must be greater than zero")
+
+        clean_unit = (unit.strip() or "unit") if clean_type == "number" else "completion"
+
+        clean_schedule = schedule.strip().lower()
+        if clean_schedule != "daily":
+            selected = [part for part in clean_schedule.split(",") if part in WEEKDAY_CODES]
+            selected = list(dict.fromkeys(selected))
+            if not selected:
+                raise ValueError("Choose at least one day")
+            clean_schedule = "daily" if len(selected) == 7 else ",".join(selected)
+
+        return (
+            clean_name,
+            clean_category,
+            clean_type,
+            clean_amount,
+            clean_unit,
+            clean_schedule,
+        )

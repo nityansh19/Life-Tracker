@@ -12,6 +12,22 @@ STREAK = "#FF9A4A"
 STREAK_SOFT = "#3A2417"
 DANGER = "#FF6B72"
 
+HABIT_CATEGORIES = [
+    "Fitness",
+    "Health",
+    "Study",
+    "Coding",
+    "Mental Health",
+    "Personal Growth",
+    "Nutrition",
+    "Sleep",
+    "Productivity",
+    "Custom",
+]
+
+WEEKDAY_CODES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
 STARTER_HABITS = [
     {"name": "10,000 Steps", "icon": "directions_walk", "category": "Fitness", "goal_type": "number", "goal_amount": 10000, "unit": "steps", "required": 1, "schedule": "daily"},
     {"name": "Workout", "icon": "fitness_center", "category": "Fitness", "goal_type": "boolean", "goal_amount": 1, "unit": "session", "required": 1, "schedule": "daily"},

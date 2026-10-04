@@ -20,6 +20,27 @@ def _display_value(habit: Habit, value: float) -> str:
     return f"{value:g} / {habit.goal_amount:g} {habit.unit}".strip()
 
 
+def _quick_increments(habit: Habit) -> list[float]:
+    if habit.unit == "steps":
+        return [500, 1000]
+    if habit.unit == "ml":
+        return [250, 500]
+    if habit.unit == "minutes":
+        return [15, 30]
+    small = max(1.0, round(habit.goal_amount * 0.1, 2))
+    large = max(small, round(habit.goal_amount * 0.25, 2))
+    return [small, large]
+
+
+def _increment_label(habit: Habit, amount: float) -> str:
+    number = f"{amount:g}"
+    if habit.unit == "minutes":
+        return f"+{number}m"
+    if habit.unit == "ml":
+        return f"+{number}ml"
+    return f"+{number}"
+
+
 def habit_card(habit: Habit, progress: dict, on_toggle, on_increment) -> ft.Control:
     value = float(progress.get("value", 0))
     completed = bool(progress.get("completed", False))
@@ -35,15 +56,14 @@ def habit_card(habit: Habit, progress: dict, on_toggle, on_increment) -> ft.Cont
             on_click=lambda e: on_toggle(habit.id),
         )
     else:
-        increments = [500, 1000] if habit.unit == "steps" else [250, 500] if habit.unit == "ml" else [15, 30]
         action = ft.Row(
             spacing=8,
             controls=[
                 ft.OutlinedButton(
-                    content=f"+{amount}{'m' if habit.unit == 'minutes' else ''}",
+                    content=_increment_label(habit, amount),
                     on_click=lambda e, a=amount: on_increment(habit.id, a),
                 )
-                for amount in increments
+                for amount in _quick_increments(habit)
             ],
         )
 

@@ -21,7 +21,12 @@ def _greeting() -> str:
     return "Good evening"
 
 
-def build_home_screen(habits: HabitService, streaks: StreakService, on_refresh) -> ft.Control:
+def build_home_screen(
+    habits: HabitService,
+    streaks: StreakService,
+    on_refresh,
+    on_manage_habits,
+) -> ft.Control:
     snapshot = habits.dashboard_snapshot()
     streak = streaks.snapshot()
 
@@ -80,16 +85,32 @@ def build_home_screen(habits: HabitService, streaks: StreakService, on_refresh) 
                 streak_card(int(streak["current_streak"]), int(streak["longest_streak"])),
                 ft.Row(
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
-                        ft.Text("Daily goals", size=20, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
-                        ft.Text(
-                            f"{snapshot['required_completed']} / {snapshot['required_total']} required",
-                            size=12,
-                            color=TEXT_MUTED,
+                        ft.Column(
+                            spacing=2,
+                            controls=[
+                                ft.Text("Daily goals", size=20, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
+                                ft.Text(
+                                    f"{snapshot['required_completed']} / {snapshot['required_total']} required today",
+                                    size=12,
+                                    color=TEXT_MUTED,
+                                ),
+                            ],
+                        ),
+                        ft.FilledTonalButton(
+                            content="Manage",
+                            icon=ft.Icons.TUNE,
+                            on_click=lambda e: on_manage_habits(),
                         ),
                     ],
                 ),
                 *cards,
+                ft.OutlinedButton(
+                    content="Add or edit habits",
+                    icon=ft.Icons.ADD,
+                    on_click=lambda e: on_manage_habits(),
+                ),
             ],
         ),
     )
